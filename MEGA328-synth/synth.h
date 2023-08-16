@@ -27,10 +27,6 @@ volatile uint8_t frqDiv, frq1, frq2;
 
 // byte read flag
 volatile uint8_t brFlag;
-
-// data protocol switch flag
-volatile uint8_t sw;
-
 // sample play flag
 uint8_t spFlag;
 

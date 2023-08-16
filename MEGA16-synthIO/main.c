@@ -12,18 +12,9 @@
 
 #define BYFRAME_SIZE 3
 
-enum action{kReleased, kPressed, knob1, knob2, knob3};
-
 volatile uint8_t keyPressed = 0;
 
-// every time a key is pressed or knob position is changed, 3 bytes will be sent
-// 1st byte - ID of action that happend
-// 2nd byte - least important byte of information
-// 3rd byte - most important byte of information
-
 uint8_t byFrame[BYFRAME_SIZE] = {1, 1, 1};
-
-void sendFrame();
 
 volatile uint8_t frameCounter = 0;
 
@@ -31,7 +22,18 @@ int main(void)
 {
     keyboardInit();
     lcd_init();
+
+    // enable interrupts on INT0 // rising edge
+    GICR |= (1 << INT0);
+    MCUCR |= ( (1 << ISC01) | (1 << ISC00) );
+
     sei();
+
+    // pin SDA jako wyjscie
+    DDR(SDA_PORT_) |= (1 << SDA);
+
+    // pin CLK jako wejscie
+    DDR(CLK_PORT) &= ~(1 << CLK);
 
     uint8_t keyState = 0;
 
@@ -40,15 +42,11 @@ int main(void)
         if(keyState != keyPressed){
             keyPressed = keyState;
             lcd_cls();
+            lcd_int(keyPressed);
 
-            if( keyState == 0 )
-                byFrame[0] = kReleased;
-            else
-                byFrame[0] = kPressed;
 
 
             byFrame[1] = keyPressed;
-            byFrame[2] = 0;
             lcd_cls();
             lcd_int(byFrame[0]);
             lcd_str("  ");
@@ -56,15 +54,32 @@ int main(void)
             lcd_str("  ");
             lcd_int(byFrame[2]);
             lcd_str("  ");
+
         }
 
     }
 }
 
 
-void sendFrame()
+ISR (INT0_vect)
 {
+    uint8_t i;
+    for(i = 0; i < 8; i++){
 
+        // wait until clock rises
+        while( !(PIN(CLK_PORT) & (1 << CLK)) );
+
+        // send high or low bit of byte
+        if( (keyPressed & (1 << i)) ){
+            PORT(SDA_PORT_) |= (1 << SDA);
+        }
+        else
+            PORT(SDA_PORT_) &= ~(1 << SDA);
+
+        // wait until clock falls
+        while( PIN(CLK_PORT) & (1 << CLK) );
+
+    }
 
 }
 

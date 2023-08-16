@@ -1,5 +1,5 @@
 
-#include "synth.h"
+ #include "synth.h"
 
 #include "../../LIBRARY/makra_mk.h"
 #include "I2C_TWI/i2c_twi.h"
@@ -13,41 +13,56 @@ const uint16_t sin_wav[] = { 1800, 1831, 1862, 1894, 1925, 1956, 1988, 2019, 205
 
 int main(void)
 {
-    portSetup();
-    timersSetup();
-    dpInit();
-    i2cSetBitrate( bitratekHz );
+    // I2C pins as output
+    DDRC |= ((1 << PC4) | (1 << PC5) );
 
+    // test pin
+    DDRB |= (1 << PB0);
+
+    // All outputs as 0;
+    PORTC = 0;
+
+    i2cSetBitrate( bitratekHz );
+    dpInit();
+
+// SAMPLING INTERRUPT TIMER ////////////////////////////////////////////
+
+    // Timer 1 CTC, TOP OCR1A, prescaler 1
+    TCCR1A |= (1 << WGM12);
+    TCCR1B |= (1 << CS10);
+    // clock 20Mhz frequency of compare match 44100kHz
+    TCNT1 = 0;          // IS IT NECESERRY???????????
+    OCR1A = 225;
+    // interrupt on compare match
+    TIMSK1 |= (1 << OCIE1A);
+
+// SAMPLING INTERRUPT TIMER ////////////////////////////////////////////
 
     sei();
-    uint8_t intSwitch = 0;
+    uint8_t intSwitch = 1;
     while(1)
     {
 
-        if( noteStart )
-            rbyte = dpReadByte(0);
+        rbyte = dpReadByte(0);
 
         // rbyte values:
         // 0 - no note, stop sampling interrupts 1 - C, 2 - D, 3 - E, ... , 8 - C2
 
-        if( brFlag )
-        {
-            frqDiv = frqDivs[rbyte];
-            frq1 = frq1s[rbyte];
-            frq2 = frq1 + 1;
+        frqDiv = frqDivs[rbyte];
+        frq1 = frq1s[rbyte];
+        frq2 = frq1 + 1;
 
 
-            // stop sampling interrupts if rbyte = 0, reset noteStart so when interrupts starts i2c communication can properly occur
-            if( !rbyte && !intSwitch ){
-                TIMSK1 &= ~(1 << OCIE1A);
-                intSwitch = 1;
-                noteStart = 0;
-                sw = 0;
-            }
-            else if( rbyte && intSwitch ){
-                TIMSK1 |= (1 << OCIE1A);
-                intSwitch = 0;
-            }
+        // stop sampling interrupts if rbyte = 0, reset noteStart so when interrupts starts i2c communication can properly occur
+        if( !rbyte && !intSwitch ){
+            TIMSK1 &= ~(1 << OCIE1A);
+            intSwitch = 1;
+            noteStart = 0;
+        }
+        else if( rbyte && intSwitch ){
+            PORTB ^= (1 << PB0);
+            TIMSK1 |= (1 << OCIE1A);
+            intSwitch = 0;
         }
 
     }
@@ -96,8 +111,10 @@ ISR (TIMER1_COMPA_vect)
 
 }
 
-ISR (INT0_vect)
+/*
+ISR (TIMER0_COMPA_vect)
 {
-
+    //TCNT1 = 0;
+    PINB |= (1 << PB0);
 }
-
+*/

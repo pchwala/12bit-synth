@@ -14,8 +14,8 @@ const uint16_t bitratekHz = 800;
 
 void dpInit()
 {
-    // enable interrupts on INT0 // rising edge
-    EICRA |= ( (1 << ISC01) | (1 << ISC00) );
+    // INTERRUPT line as output
+    DDR(INT_PORT) |= (1 << INT);
 
     // CLOCK line as output
     DDR(CLK_PORT) |= (1 << CLK);
@@ -24,9 +24,8 @@ void dpInit()
     DDR(SDA_PORT) &= ~(1 << SDA);
 
     noteStart = 0;
-    brFlag = 1;
+    brFlag = 0;
     spFlag = 0;
-    sw = 0;
 
 
 }
@@ -39,7 +38,7 @@ void timersSetup()
     TCCR1A |= (1 << WGM12);
     TCCR1B |= (1 << CS10);
     // AVRclock=20Mhz frequency of compare match 44100kHz
-    //TCNT1 = 0;          // IS IT NECESERRY???????????
+    TCNT1 = 0;          // IS IT NECESERRY???????????
     OCR1A = 225;
     // interrupt on compare match
     TIMSK1 |= (1 << OCIE1A);
@@ -55,7 +54,7 @@ void timersSetup()
     TCNT0 = 0;
     OCR0A = 200;
 
-    TIMSK0 |= (1 << OCIE0A);
+    //TIMSK0 |= (1 << OCIE0A);
 
 // DATA PROTOCOL TIMER ///////////////////////////////////////////////
 }
@@ -64,9 +63,6 @@ void portSetup()
 {
     // I2C pins as output
     DDRC |= ((1 << PC4) | (1 << PC5) );
-
-    // internal pull-up resistor to VCC
-    PORTC |= ( (1 << PC4) | (1 << PC5) );
 
     // test pin
     DDRB |= (1 << PB0);
@@ -79,35 +75,36 @@ void portSetup()
 uint8_t dpReadByte(uint8_t sw)
 {
     static uint8_t byte = 0;
-    static uint8_t bitsRead = 0;
     static uint8_t pow = 1;
+    static uint8_t bitsRead = 0;
 
-    if( brFlag ){
+    // if whole byte was read, set new interrupt
+    if( !bitsRead && !sw )
+    {
+        byte = 0;
+        pow = 1;
+        brFlag = 0;
 
         // INTERRUPT high
         PORT(INT_PORT) |= (1 << INT);
 
-
         // INTERRUPT low
         if( !noteStart )
-            _delay_us(10);
+            _delay_us(5);
         PORT(INT_PORT) &= ~(1 << INT);
-
-        brFlag = 0;
-        bitsRead = 0;
-        byte = 0;
-        pow = 1;
     }
 
-
-    // this ifs slow down function to around 100kHz when sample playing interrupts are disabled
-    // because otherwise it was executed at around 1Mhz and was not working properly
-    // when samples are playing this function occurs at around 1kHz
+// sw switched in Timer0 interrupt alternately makes function behave like this:
+// 1. set dp clock high
+// 2. wait 1 timer0 cycle
+// 3. read bit and set dp clock low
+// 4. rinse repeat
 
     if( !sw || noteStart )
     {
         // set clock high
         PORT(CLK_PORT) |= (1 << CLK);
+
     }
 
     if( sw || noteStart )
@@ -123,10 +120,11 @@ uint8_t dpReadByte(uint8_t sw)
         PORT(CLK_PORT) &= ~(1 << CLK);
 
         bitsRead++;
-        if(bitsRead == 8)
+        if(bitsRead == 8){
+            bitsRead = 0;
             brFlag = 1;
+        }
     }
-
 
     return byte;
 }
